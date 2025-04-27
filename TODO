@@ -1,4 +1,3 @@
-- List pending transactions in 'Account' and move to recent transactions when confirmed by node
 - WalletConnect V2
   - QR code scanning
   - parse 'data' with common ABIs
