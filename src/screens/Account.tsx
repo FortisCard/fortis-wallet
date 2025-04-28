@@ -93,7 +93,7 @@ const Account: React.FC = () => {
     try {
       setIsSending(true);
       // TODO: Implement proper PIN input UI
-      const pin = [141, 150, 158, 239, 110, 202, 211, 194, 154, 58, 98, 146, 128, 230, 134, 207, 12, 63, 93, 90, 134, 175, 243, 202, 18, 2, 12, 146, 58, 220, 108, 146]; // sha256(b'123456')
+      const pin = Array.from(new TextEncoder().encode("123456"))
 
       const { signedTx: signed, totalFee: fee } = await signTx(
         toAddress,

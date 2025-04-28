@@ -6,6 +6,7 @@ import bs58check from 'bs58check';
 
 export enum INSTRUCTIONS {
   SELECT_APPLET = 0xA4,
+  INS_STORE_ENCRYPTED_MASTER_SEED = 0x10,
   INS_SIGN_TRANSACTION = 0x20,
   INS_ACCOUNT_DISCOVERY = 0x30,
   INS_FIRMWARE_VERSION = 0x40,
@@ -32,7 +33,8 @@ export enum ELLIPTIC_CURVE {
 export class FortisCardAPI {
   private static nfcContext: ReturnType<typeof useNfc> | null = null;
   public static readonly LATEST_FIRMWARE_VERSION = '1.0.0';
-  private static readonly mnemonic = 'sausage cost core ozone then scatter oppose switch barrel jeans snake pony';
+  private static mnemonic: string = 'sausage cost core ozone then scatter oppose switch barrel jeans snake pony';
+  private static password?: string;
   private static readonly ec = new EC('secp256k1');
 
   /**
@@ -43,10 +45,22 @@ export class FortisCardAPI {
   }
 
   /**
-   * @param pin - The user's PIN for authentication (8 bytes)
+   * @param mnemonic - The BIP-39 mnemonic to store to the FortisCard
+   * @param password - The BIP-39 password to store to the FortisCard
+   *
+   */
+  public static async storeEncryptedMasterSeed(
+    _pin: number[],
+    mnemonic: string,
+    password?: string
+  ) {
+    this.mnemonic = mnemonic;
+    this.password = password;
+  }
+
+  /**
    * @param purpose - The purpose field as per BIP-44 (4 bytes)
    * @param coinType - The coin_type as per BIP-44 (4 bytes)
-   * @param ellipticCurve - The elliptic curve to use for signing (1 byte)
    * @param versionBytes - The version bytes for the specific coin (4 bytes)
    *
    * @returns The xpub as a base 58 encoded string
@@ -66,12 +80,10 @@ export class FortisCardAPI {
   }
 
   /**
-   * @param pin - The user's PIN for authentication (8 bytes)
    * @param purpose - The purpose field as per BIP-44 (4 bytes)
    * @param coinType - The coin_type as per BIP-44 (4 bytes)
    * @param change - The change (0 for external, 1 for internal) as per BIP-44 (1 byte)
    * @param addressIndex - The address_index (0-255) as per BIP-44 (1 byte)
-   * @param ellipticCurve - The elliptic curve to use for signing (1 byte)
    * @param transactionHash - The hash of the transaction to sign (32 bytes)
    *
    * @returns { recoveryId (1 byte), r (32 bytes), s (32 bytes) }
@@ -94,9 +106,9 @@ export class FortisCardAPI {
 
     const key = this.ec.keyFromPrivate(child.privateKey!);
     const signature = key.sign(Buffer.from(transactionHash), { canonical: true });
-    const recoveryId = signature.recoveryParam!;
-    const r = Array.from(signature.r.toArrayLike(Buffer, 'be', 32));
-    const s = Array.from(signature.s.toArrayLike(Buffer, 'be', 32));
+    const recoveryId: number = signature.recoveryParam!;
+    const r: number[] = Array.from(signature.r.toArrayLike(Buffer, 'be', 32));
+    const s: number[] = Array.from(signature.s.toArrayLike(Buffer, 'be', 32));
 
     return { recoveryId, r, s };
   }
@@ -106,7 +118,7 @@ export class FortisCardAPI {
   }
 
   private static async bip32derive(derivePath: string) {
-    const seed = await bip39.mnemonicToSeed(this.mnemonic);
+    const seed: Buffer = await bip39.mnemonicToSeed(this.mnemonic, this.password);
     const root = HDKey.fromMasterSeed(seed);
     return root.derive(derivePath);
   }

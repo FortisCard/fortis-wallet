@@ -4,4 +4,3 @@
 - Input PIN from user. Perhaps store it in RAM while app is open.
   - PIN will be sent to FortisCard as a SHA-256 hash of a UTF-8 encoded string of digits e.g. sha256(b'123456')
 - Support more blockchains
-- Add ability to generate and store seed phrase from app for the not-so-security-conscious
