@@ -1,10 +1,13 @@
 import hash from 'hash.js';
+import aesjs from 'aes-js'
 import bs58 from 'bs58';
+import * as bip39 from 'bip39';
 import NfcManager, { NfcTech } from 'react-native-nfc-manager';
 import { useNfc } from '../components/nfc/NfcContext';
 
 export enum INSTRUCTIONS {
   SELECT_APPLET = 0xA4,
+  INS_STORE_ENCRYPTED_MASTER_SEED = 0x10,
   INS_SIGN_TRANSACTION = 0x20,
   INS_ACCOUNT_DISCOVERY = 0x30,
   INS_FIRMWARE_VERSION = 0x40,
@@ -43,7 +46,32 @@ export class FortisCardAPI {
   }
 
   /**
-   * @param pin - The user's PIN for authentication (8 bytes)
+   * @param pin - The user's PIN for authentication (will be SHA-256 hashed)
+   * @param mnemonic - The BIP-39 mnemonic to store to the FortisCard
+   * @param password - The BIP-39 password to store to the FortisCard
+   *
+   */
+  public static async storeEncryptedMasterSeed(
+    pin: number[],
+    mnemonic: string,
+    password?: string
+  ) {
+    const seed: number[] = Array.from(await bip39.mnemonicToSeed(mnemonic, password));
+
+    // AES encrypt seed with pin
+    const aes = new aesjs.ModeOfOperation.ecb(this.sha256(pin));
+    const encrypted_seed: number[] = Array.from(aes.encrypt(seed));
+
+    // Append fingerprint for decryption security
+    const fingerprint: number[] = this.sha256(seed).slice(0, 4);
+    const data = encrypted_seed.concat(fingerprint);
+
+    const apdu: number[] = [0x00, INSTRUCTIONS.INS_STORE_ENCRYPTED_MASTER_SEED, 0x00, 0x00, data.length, ...data];
+    await this.sendApdu(apdu);
+  }
+
+  /**
+   * @param pin - The user's PIN for authentication (will be SHA-256 hashed)
    * @param purpose - The purpose field as per BIP-44 (4 bytes)
    * @param coinType - The coin_type as per BIP-44 (4 bytes)
    * @param ellipticCurve - The elliptic curve to use for signing (1 byte)
@@ -58,12 +86,12 @@ export class FortisCardAPI {
     ellipticCurve: ELLIPTIC_CURVE,
     versionBytes: number[]
   ): Promise<string> {
-    const response = await this.getXpubData(pin, purpose, coinType, ellipticCurve);
+    const response = await this.getXpubData(this.sha256(pin), purpose, coinType, ellipticCurve);
     return this.constructXpub(response, versionBytes);
   }
 
   /**
-   * @param pin - The user's PIN for authentication (8 bytes)
+   * @param pin - The user's PIN for authentication (will be SHA-256 hashed)
    * @param purpose - The purpose field as per BIP-44 (4 bytes)
    * @param coinType - The coin_type as per BIP-44 (4 bytes)
    * @param change - The change (0 for external, 1 for internal) as per BIP-44 (1 byte)
@@ -94,7 +122,7 @@ export class FortisCardAPI {
     ];
 
     const data: number[] = [
-      ...pin,
+      ...this.sha256(pin),
       purpose,
       ...coinTypeArray,
       change,
@@ -152,7 +180,7 @@ export class FortisCardAPI {
    * to construct an xpub using BIP-32 Extended Key Serialization format.
    * https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#Serialization-format
    * 
-   * @param pin - The user's PIN for authentication (8 bytes)
+   * @param pin - The user's PIN for authentication (already SHA-256 hashed)
    * @param purpose - The purpose field as per BIP-44 (4 bytes)
    * @param coinType - The coin_type as per BIP-44 (4 bytes)
    * @param ellipticCurve - The elliptic curve to use for signing (1 byte)
